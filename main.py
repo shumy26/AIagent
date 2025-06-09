@@ -107,11 +107,7 @@ available_functions = types.Tool(
     ]
 )
 
-response = client.models.generate_content(
-    model='gemini-2.0-flash-001',
-    contents=messages,
-    config=types.GenerateContentConfig(tools=[available_functions], system_instruction=system_prompt),
-)
+
 
 def generate_content(response, verbose=False):
     if response.function_calls:
@@ -125,4 +121,37 @@ def generate_content(response, verbose=False):
 
 
 
-generate_content(response, verbose)
+
+
+def generate_content_loop(verbose=False, max_iterations=20):
+    iteration = 0
+    while iteration < max_iterations:
+        response = client.models.generate_content(
+            model='gemini-2.0-flash-001',
+            contents=messages,
+            config=types.GenerateContentConfig(tools=[available_functions], system_instruction=system_prompt),
+        )
+
+        function_called = False
+        for candidate in getattr(response, "candidates", []):
+            if hasattr(candidate, "content") and candidate.content:
+                messages.append(candidate.content)
+
+        if getattr(response, "function_calls", None):
+            function_called = True
+            for function_call_part in response.function_calls:
+                result = call_function(function_call_part, verbose=verbose)
+                if not result.parts[0].function_response:
+                    raise Exception(f"Function {function_call_part.name} returned no response")
+                if verbose:
+                    print(f"-> {result.parts[0].function_response.response}")
+                messages.append(result.parts[0])
+        else:
+            print(getattr(response, "text", "No response text found."))
+            break
+
+        iteration += 1
+        if not function_called:
+            break
+
+generate_content_loop(verbose=verbose)
